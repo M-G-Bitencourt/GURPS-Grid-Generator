@@ -17,7 +17,7 @@
         .control-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 3px; }
         input[type="text"], select { width: 100%; padding: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         input[type="color"] { width: 100%; height: 30px; border: none; cursor: pointer; padding: 0; }
-        .radio-group { display: flex; gap: 10px; font-size: 13px; align-items: center; }
+        .radio-group { display: flex; gap: 8px; font-size: 12px; align-items: center; flex-wrap: wrap; }
         .radio-group label { margin: 0; font-weight: normal; cursor: pointer; }
         .btn-group { display: flex; gap: 10px; margin-top: 15px; }
         button { flex: 1; padding: 8px; cursor: pointer; border: 1px solid #0056b3; background: #007bff; color: white; border-radius: 4px; font-weight: bold; }
@@ -33,12 +33,19 @@
                 <input type="radio" name="mode" value="tokens" id="modeTokens" checked>
                 <label for="modeTokens">Tokens</label>
                 
+                <input type="radio" name="mode" value="terrain" id="modeTerrain">
+                <label for="modeTerrain">Terreno</label>
+
                 <input type="radio" name="mode" value="walls" id="modeWalls">
                 <label for="modeWalls">Paredes</label>
 
                 <input type="radio" name="mode" value="camera" id="modeCamera">
                 <label for="modeCamera">Câmera</label>
             </div>
+        </div>
+        <div class="control-group">
+            <label>Cor do Terreno (Hexágono)</label>
+            <input type="color" id="terrainColor" value="#a3d9a5">
         </div>
         <div class="control-group">
             <label>Nome do Token</label>
@@ -52,22 +59,14 @@
             <label>Formato (Multi-Hex)</label>
             <select id="tokenShape">
                 <option value="1x1">1 Hex (Padrão)</option>
-                <option value="1x2">2 Hex (Linha Curta)</option>
+                <option value="1x2">2 Hex (Linha)</option>
                 <option value="1x3">3 Hex (Linha Média)</option>
                 <option value="1x4">4 Hex (Linha Longa)</option>
-                <option value="1x5">5 Hex (Linha Muito Longa)</option>
-                <option value="1x6">6 Hex (Linha Extrema)</option>
                 <option value="triangulo">3 Hex (Triângulo)</option>
-                <option value="2x2">4 Hex (Bloco 2x2)</option>
-                <option value="2x3">6 Hex (Retângulo 2x3)</option>
-                <option value="3x3">9 Hex (Losango 3x3)</option>
-                <option value="anel">6 Hex (Anel Vazio)</option>
-                <option value="cone_curto">3 Hex (Cone de Área 1)</option>
-                <option value="cone_medio">6 Hex (Cone de Área 2)</option>
-                <option value="gigante">7 Hex (Gigante - Raio 1)</option>
-                <option value="bloco_3_4_3">10 Hex (Bloco 3-4-3)</option>
-                <option value="colossal">19 Hex (Colossal - Raio 2)</option>
-                <option value="bloco_10">Bloco 10</option>
+                <option value="2x2">4 Hex (Bloco Largo)</option>
+                <option value="2x3">6 Hex (Retângulo)</option>
+                <option value="gigante">7 Hex (Gigante)</option>
+                <option value="colossal">19 Hex (Colossal)</option>
             </select>
         </div>
         
@@ -78,10 +77,11 @@
         </div>
 
         <div class="instructions">
-            <strong>Tokens:</strong> Clicar adiciona, Arrastar move, Direito remove.<br>
-            <strong>Rotacionar:</strong> Aperte <strong>'R'</strong> sobre um token.<br>
-            <strong>Paredes:</strong> Clique e arraste nas bordas.<br>
-            <strong>Câmera:</strong> Arraste ou use o botão do meio do mouse.
+            <strong>Tokens:</strong> Clique adiciona, arrastar move, direito remove.<br>
+            <strong>Terreno:</strong> Clique e arraste para pintar (se vazio) ou apagar (se colorido).<br>
+            <strong>Rotacionar:</strong> Tecle <strong>'R'</strong> sobre o token.<br>
+            <strong>Paredes:</strong> Arraste sobre as bordas.<br>
+            <strong>Câmera:</strong> Arraste ou use o botão central do mouse.
         </div>
     </div>
     <canvas id="hexCanvas"></canvas>
@@ -109,47 +109,15 @@
             "1x2": [{q:0, r:0}, {q:0, r:-1}],
             "1x3": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}],
             "1x4": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}, {q:0, r:-3}],
-            "1x5": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}, {q:0, r:-3}, {q:0, r:-4}],
-            "1x6": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}, {q:0, r:-3}, {q:0, r:-4}, {q:0, r:-5}],
             "triangulo": [{q:0, r:0}, {q:1, r:-1}, {q:0, r:-1}],
             "2x2": [{q:0, r:0}, {q:1, r:-1}, {q:0, r:-1}, {q:1, r:0}],
             "2x3": [{q:0, r:0}, {q:1, r:-1}, {q:0, r:-1}, {q:1, r:0}, {q:0, r:-2}, {q:1, r:-2}],
-            "3x3": [
-                {q:0,r:0}, {q:1,r:-1}, {q:2,r:-2},
-                {q:0,r:-1}, {q:1,r:-2}, {q:2,r:-3},
-                {q:0,r:-2}, {q:1,r:-3}, {q:2,r:-4}
-            ],
-            "anel": [
-                {q:1,r:-1}, {q:0,r:-1}, {q:-1,r:0}, 
-                {q:-1,r:1}, {q:0,r:1}, {q:1,r:0}
-            ],
-            "cone_curto": [
-                {q:0,r:0}, {q:1,r:-1}, {q:1,r:0}
-            ],
-            "cone_medio": [
-                {q:0,r:0}, {q:1,r:-1}, {q:1,r:0}, 
-                {q:2,r:-2}, {q:2,r:-1}, {q:2,r:0}
-            ],
-            "gigante": [
-                {q:0,r:0}, {q:1,r:-1}, {q:0,r:-1}, 
-                {q:-1,r:0}, {q:-1,r:1}, {q:0,r:1}, {q:1,r:0}
-            ],
-            "bloco_3_4_3": [
-                {q:-1, r:0}, {q:-1, r:1}, {q:-1, r:2}, 
-                {q:0, r:-1}, {q:0, r:0}, {q:0, r:1}, {q:0, r:2}, 
-                {q:1, r:-1}, {q:1, r:0}, {q:1, r:1}
-            ],
+            "gigante": [{q:0,r:0}, {q:1,r:-1}, {q:0,r:-1}, {q:-1,r:0}, {q:-1,r:1}, {q:0,r:1}, {q:1,r:0}],
             "colossal": [
                 {q:0,r:0}, {q:1,r:-1}, {q:0,r:-1}, {q:-1,r:0}, {q:-1,r:1}, {q:0,r:1}, {q:1,r:0},
                 {q:0,r:-2}, {q:1,r:-2}, {q:2,r:-2}, {q:2,r:-1}, {q:2,r:0}, {q:1,r:1}, {q:0,r:2}, 
                 {q:-1,r:2}, {q:-2,r:2}, {q:-2,r:1}, {q:-2,r:0}, {q:-1,r:-1}
-            ],
-            "bloco_10": [
-                {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
-                {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
-                {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1}
             ]
-
         };
 
         let camera = { x: 0, y: 0 };
@@ -160,17 +128,22 @@
 
         let entities = {}; 
         let walls = new Set();
+        let hexColors = {}; 
         let draggingToken = null; 
         
         let isPaintingWalls = false;
         let wallPaintAction = 'add';
         let lastEdgeId = null;
 
+        let isPaintingTerrain = false;
+        let terrainPaintAction = 'add';
+
         document.getElementById('btnSave').addEventListener('click', () => {
             const mapData = {
                 camera: camera,
                 entities: entities,
-                walls: Array.from(walls)
+                walls: Array.from(walls),
+                hexColors: hexColors
             };
             
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(mapData));
@@ -197,6 +170,7 @@
                     camera = mapData.camera || { x: 0, y: 0 };
                     entities = mapData.entities || {};
                     walls = new Set(mapData.walls || []);
+                    hexColors = mapData.hexColors || {};
                     draw();
                 } catch (err) {
                     alert("Erro ao ler o arquivo do mapa.");
@@ -276,7 +250,7 @@
             return null;
         }
 
-        function drawHex(x, y) {
+        function drawHex(x, y, fillColor = null) {
             ctx.beginPath();
             for (let i = 0; i < 6; i++) {
                 let angle_rad = Math.PI / 180 * (60 * i);
@@ -286,6 +260,11 @@
                 else ctx.lineTo(px, py);
             }
             ctx.closePath();
+            
+            if (fillColor) {
+                ctx.fillStyle = fillColor;
+                ctx.fill();
+            }
             ctx.stroke();
         }
 
@@ -355,7 +334,10 @@
                     let pos = hexToPixel(q, r);
                     if (pos.x + camera.x < -width/2 - SIZE || pos.x + camera.x > width/2 + SIZE ||
                         pos.y + camera.y < -height/2 - SIZE || pos.y + camera.y > height/2 + SIZE) continue;
-                    drawHex(pos.x, pos.y);
+                    
+                    let key = `${q},${r}`;
+                    let fillColor = hexColors[key] || null;
+                    drawHex(pos.x, pos.y, fillColor);
                 }
             }
 
@@ -404,6 +386,17 @@
             return pixelToHex(mouseWorldPos.x, mouseWorldPos.y);
         }
 
+        function applyTerrainColor(hex, action) {
+            let key = `${hex.q},${hex.r}`;
+            if (action === 'add') {
+                let color = document.getElementById('terrainColor').value;
+                hexColors[key] = color;
+            } else if (action === 'remove') {
+                delete hexColors[key];
+            }
+            draw();
+        }
+
         window.addEventListener('keydown', (e) => {
             if (e.key === 'r' || e.key === 'R') {
                 if (draggingToken) {
@@ -427,6 +420,12 @@
             if (draggingToken) {
                 hasMoved = true;
                 draw();
+                return;
+            }
+
+            if (isPaintingTerrain) {
+                let hex = getHexFromEvent();
+                applyTerrainColor(hex, terrainPaintAction);
                 return;
             }
 
@@ -465,6 +464,12 @@
                         draggingToken = clickedToken;
                     }
                 } 
+                else if (mode === 'terrain') {
+                    isPaintingTerrain = true;
+                    let key = `${hex.q},${hex.r}`;
+                    terrainPaintAction = hexColors[key] ? 'remove' : 'add';
+                    applyTerrainColor(hex, terrainPaintAction);
+                }
                 else if (mode === 'walls') {
                     isPaintingWalls = true;
                     let edgeId = getClosestEdge(hex.q, hex.r, mouseWorldPos.x, mouseWorldPos.y);
@@ -490,13 +495,20 @@
                 lastMouse = { x: e.clientX, y: e.clientY };
                 hasMoved = false;
             }
+            else if (e.button === 2) {
+                if (mode === 'terrain') {
+                    isPaintingTerrain = true;
+                    terrainPaintAction = 'remove';
+                    applyTerrainColor(hex, 'remove');
+                }
+            }
         });
 
         window.addEventListener('mouseup', (e) => {
-            // Fix: Ignora eventos originados no painel UI
             if (e.target !== canvas) {
                 isDraggingCanvas = false;
                 isPaintingWalls = false;
+                isPaintingTerrain = false;
                 draggingToken = null; 
                 draw();
                 return;
@@ -525,6 +537,11 @@
             if (isPaintingWalls) {
                 isPaintingWalls = false;
                 lastEdgeId = null;
+                return;
+            }
+
+            if (isPaintingTerrain) {
+                isPaintingTerrain = false;
                 return;
             }
 
