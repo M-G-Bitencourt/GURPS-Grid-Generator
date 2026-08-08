@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Gerenciador Tático - Hex Grid</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #e9ecef; font-family: sans-serif; user-select: none; }
+        canvas { display: block; cursor: crosshair; }
+        canvas:active { cursor: grabbing; }
+        
+        #ui { 
+            position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.95); 
+            padding: 15px; border-radius: 8px; border: 1px solid #ccc; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 300px;
+        }
+        .control-group { margin-bottom: 10px; }
+        .control-group label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 3px; }
+        input[type="text"], select { width: 100%; padding: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        input[type="color"] { width: 100%; height: 30px; border: none; cursor: pointer; padding: 0; }
+        .radio-group { display: flex; gap: 10px; font-size: 13px; align-items: center; }
+        .radio-group label { margin: 0; font-weight: normal; cursor: pointer; }
+        .btn-group { display: flex; gap: 10px; margin-top: 15px; }
+        button { flex: 1; padding: 8px; cursor: pointer; border: 1px solid #0056b3; background: #007bff; color: white; border-radius: 4px; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        .instructions { font-size: 11px; color: #555; margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px; line-height: 1.4;}
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="control-group">
+            <label>Modo de Interação</label>
+            <div class="radio-group">
+                <input type="radio" name="mode" value="tokens" id="modeTokens" checked>
+                <label for="modeTokens">Tokens</label>
+                
+                <input type="radio" name="mode" value="walls" id="modeWalls">
+                <label for="modeWalls">Paredes</label>
+
+                <input type="radio" name="mode" value="camera" id="modeCamera">
+                <label for="modeCamera">Câmera</label>
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Nome do Token</label>
+            <input type="text" id="tokenName" value="Personagem" placeholder="Nome do token">
+        </div>
+        <div class="control-group">
+            <label>Cor do Token</label>
+            <input type="color" id="tokenColor" value="#3399ff">
+        </div>
+        <div class="control-group">
+            <label>Formato (Multi-Hex)</label>
+            <select id="tokenShape">
+                <option value="1x1">1 Hex (Padrão)</option>
+                <option value="1x2">2 Hex (Linha Curta)</option>
+                <option value="1x3">3 Hex (Linha Média)</option>
+                <option value="1x4">4 Hex (Linha Longa)</option>
+                <option value="1x5">5 Hex (Linha Muito Longa)</option>
+                <option value="1x6">6 Hex (Linha Extrema)</option>
+                <option value="triangulo">3 Hex (Triângulo)</option>
+                <option value="2x2">4 Hex (Bloco 2x2)</option>
+                <option value="2x3">6 Hex (Retângulo 2x3)</option>
+                <option value="3x3">9 Hex (Losango 3x3)</option>
+                <option value="anel">6 Hex (Anel Vazio)</option>
+                <option value="cone_curto">3 Hex (Cone de Área 1)</option>
+                <option value="cone_medio">6 Hex (Cone de Área 2)</option>
+                <option value="gigante">7 Hex (Gigante - Raio 1)</option>
+                <option value="bloco_3_4_3">10 Hex (Bloco 3-4-3)</option>
+                <option value="colossal">19 Hex (Colossal - Raio 2)</option>
+                <option value="bloco_10">Bloco 10</option>
+            </select>
+        </div>
+        
+        <div class="btn-group">
+            <button id="btnSave">Salvar Mapa</button>
+            <button id="btnLoad">Carregar Mapa</button>
+            <input type="file" id="fileInput" style="display: none;" accept=".json">
+        </div>
+
+        <div class="instructions">
+            <strong>Tokens:</strong> Clicar adiciona, Arrastar move, Direito remove.<br>
+            <strong>Rotacionar:</strong> Aperte <strong>'R'</strong> sobre um token.<br>
+            <strong>Paredes:</strong> Clique e arraste nas bordas.<br>
+            <strong>Câmera:</strong> Arraste ou use o botão do meio do mouse.
+        </div>
+    </div>
+    <canvas id="hexCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('hexCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            draw();
+        });
+
+        const SIZE = 40;
+        const HEX_WIDTH = 2 * SIZE;
+        const HEX_HEIGHT = Math.sqrt(3) * SIZE;
+        const DIRS = [[1,0], [0,1], [-1,1], [-1,0], [0,-1], [1,-1]];
+
+        const SHAPES = {
+            "1x1": [{q:0, r:0}],
+            "1x2": [{q:0, r:0}, {q:0, r:-1}],
+            "1x3": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}],
+            "1x4": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}, {q:0, r:-3}],
+            "1x5": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}, {q:0, r:-3}, {q:0, r:-4}],
+            "1x6": [{q:0, r:0}, {q:0, r:-1}, {q:0, r:-2}, {q:0, r:-3}, {q:0, r:-4}, {q:0, r:-5}],
+            "triangulo": [{q:0, r:0}, {q:1, r:-1}, {q:0, r:-1}],
+            "2x2": [{q:0, r:0}, {q:1, r:-1}, {q:0, r:-1}, {q:1, r:0}],
+            "2x3": [{q:0, r:0}, {q:1, r:-1}, {q:0, r:-1}, {q:1, r:0}, {q:0, r:-2}, {q:1, r:-2}],
+            "3x3": [
+                {q:0,r:0}, {q:1,r:-1}, {q:2,r:-2},
+                {q:0,r:-1}, {q:1,r:-2}, {q:2,r:-3},
+                {q:0,r:-2}, {q:1,r:-3}, {q:2,r:-4}
+            ],
+            "anel": [
+                {q:1,r:-1}, {q:0,r:-1}, {q:-1,r:0}, 
+                {q:-1,r:1}, {q:0,r:1}, {q:1,r:0}
+            ],
+            "cone_curto": [
+                {q:0,r:0}, {q:1,r:-1}, {q:1,r:0}
+            ],
+            "cone_medio": [
+                {q:0,r:0}, {q:1,r:-1}, {q:1,r:0}, 
+                {q:2,r:-2}, {q:2,r:-1}, {q:2,r:0}
+            ],
+            "gigante": [
+                {q:0,r:0}, {q:1,r:-1}, {q:0,r:-1}, 
+                {q:-1,r:0}, {q:-1,r:1}, {q:0,r:1}, {q:1,r:0}
+            ],
+            "bloco_3_4_3": [
+                {q:-1, r:0}, {q:-1, r:1}, {q:-1, r:2}, 
+                {q:0, r:-1}, {q:0, r:0}, {q:0, r:1}, {q:0, r:2}, 
+                {q:1, r:-1}, {q:1, r:0}, {q:1, r:1}
+            ],
+            "colossal": [
+                {q:0,r:0}, {q:1,r:-1}, {q:0,r:-1}, {q:-1,r:0}, {q:-1,r:1}, {q:0,r:1}, {q:1,r:0},
+                {q:0,r:-2}, {q:1,r:-2}, {q:2,r:-2}, {q:2,r:-1}, {q:2,r:0}, {q:1,r:1}, {q:0,r:2}, 
+                {q:-1,r:2}, {q:-2,r:2}, {q:-2,r:1}, {q:-2,r:0}, {q:-1,r:-1}
+            ],
+            "bloco_10": [
+                {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
+                {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
+                {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1}
+            ]
+
+        };
+
+        let camera = { x: 0, y: 0 };
+        let isDraggingCanvas = false;
+        let hasMoved = false;
+        let lastMouse = { x: 0, y: 0 };
+        let mouseWorldPos = { x: 0, y: 0 };
+
+        let entities = {}; 
+        let walls = new Set();
+        let draggingToken = null; 
+        
+        let isPaintingWalls = false;
+        let wallPaintAction = 'add';
+        let lastEdgeId = null;
+
+        document.getElementById('btnSave').addEventListener('click', () => {
+            const mapData = {
+                camera: camera,
+                entities: entities,
+                walls: Array.from(walls)
+            };
+            
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(mapData));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "mapa_tatico.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        });
+
+        document.getElementById('btnLoad').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const mapData = JSON.parse(event.target.result);
+                    camera = mapData.camera || { x: 0, y: 0 };
+                    entities = mapData.entities || {};
+                    walls = new Set(mapData.walls || []);
+                    draw();
+                } catch (err) {
+                    alert("Erro ao ler o arquivo do mapa.");
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = ""; 
+        });
+
+        function getMode() {
+            return document.querySelector('input[name="mode"]:checked').value;
+        }
+
+        function hexToPixel(q, r) {
+            let x = SIZE * (3/2 * q);
+            let y = SIZE * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r);
+            return { x, y };
+        }
+
+        function pixelToHex(x, y) {
+            let q = (2/3 * x) / SIZE;
+            let r = (-1/3 * x + Math.sqrt(3)/3 * y) / SIZE;
+            return axialRound(q, r);
+        }
+
+        function axialRound(fracQ, fracR) {
+            let fracS = -fracQ - fracR;
+            let q = Math.round(fracQ);
+            let r = Math.round(fracR);
+            let s = Math.round(fracS);
+            
+            let q_diff = Math.abs(q - fracQ);
+            let r_diff = Math.abs(r - fracR);
+            let s_diff = Math.abs(s - fracS);
+            
+            if (q_diff > r_diff && q_diff > s_diff) q = -r - s;
+            else if (r_diff > s_diff) r = -q - s;
+            return { q, r };
+        }
+
+        function rotateHex(q, r, steps) {
+            let nq = q, nr = r;
+            for(let i=0; i<steps; i++) {
+                let temp_q = nq;
+                nq = -nr;
+                nr = temp_q + nr;
+            }
+            return {q: nq, r: nr};
+        }
+
+        function getClosestEdge(q, r, mouseX, mouseY) {
+            let center = hexToPixel(q, r);
+            let angle = Math.atan2(mouseY - center.y, mouseX - center.x) * 180 / Math.PI;
+            if (angle < 0) angle += 360;
+
+            let dirIndex = Math.floor(angle / 60) % 6;
+            let nQ = q + DIRS[dirIndex][0];
+            let nR = r + DIRS[dirIndex][1];
+
+            let hex1 = `${q},${r}`;
+            let hex2 = `${nQ},${nR}`;
+            return hex1 < hex2 ? `${hex1}|${hex2}` : `${hex2}|${hex1}`;
+        }
+
+        function getTokenAtHex(tq, tr) {
+            for (let coord in entities) {
+                let ent = entities[coord];
+                let [pq, pr] = coord.split(',').map(Number);
+                
+                for (let offset of ent.shape) {
+                    let rot = rotateHex(offset.q, offset.r, ent.facing);
+                    if (pq + rot.q === tq && pr + rot.r === tr) {
+                        return coord;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function drawHex(x, y) {
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                let angle_rad = Math.PI / 180 * (60 * i);
+                let px = x + SIZE * Math.cos(angle_rad);
+                let py = y + SIZE * Math.sin(angle_rad);
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        function drawEntity(coordKey, entity, isDragged = false) {
+            let [pq, pr] = coordKey.split(',').map(Number);
+
+            if (isDragged) {
+                let hex = pixelToHex(mouseWorldPos.x, mouseWorldPos.y);
+                pq = hex.q;
+                pr = hex.r;
+                ctx.globalAlpha = 0.7;
+            }
+
+            ctx.fillStyle = entity.color;
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 2;
+
+            let pivotPos = hexToPixel(pq, pr);
+
+            for (let offset of entity.shape) {
+                let rot = rotateHex(offset.q, offset.r, entity.facing);
+                let pos = hexToPixel(pq + rot.q, pr + rot.r);
+                
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    let angle_rad = Math.PI / 180 * (60 * i);
+                    let px = pos.x + SIZE * Math.cos(angle_rad);
+                    let py = pos.y + SIZE * Math.sin(angle_rad);
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            }
+
+            let faceAngle = (entity.facing * 60 - 90) * Math.PI / 180;
+            ctx.beginPath();
+            ctx.moveTo(pivotPos.x, pivotPos.y);
+            ctx.lineTo(pivotPos.x + Math.cos(faceAngle) * SIZE * 0.8, pivotPos.y + Math.sin(faceAngle) * SIZE * 0.8);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(entity.name, pivotPos.x, pivotPos.y + SIZE + 10);
+
+            if (isDragged) ctx.globalAlpha = 1.0;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            ctx.save();
+            ctx.translate(width / 2 + camera.x, height / 2 + camera.y);
+
+            let viewRadius = Math.max(width, height) / SIZE; 
+            let centerQ = -camera.x / (SIZE * 1.5);
+            let centerR = (-camera.y / HEX_HEIGHT) - (centerQ / 2);
+
+            ctx.strokeStyle = "#ccc";
+            ctx.lineWidth = 1;
+            for (let q = Math.floor(centerQ - viewRadius); q <= Math.ceil(centerQ + viewRadius); q++) {
+                for (let r = Math.floor(centerR - viewRadius); r <= Math.ceil(centerR + viewRadius); r++) {
+                    let pos = hexToPixel(q, r);
+                    if (pos.x + camera.x < -width/2 - SIZE || pos.x + camera.x > width/2 + SIZE ||
+                        pos.y + camera.y < -height/2 - SIZE || pos.y + camera.y > height/2 + SIZE) continue;
+                    drawHex(pos.x, pos.y);
+                }
+            }
+
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 5;
+            ctx.lineCap = "round";
+            for (let edgeId of walls) {
+                let [h1, h2] = edgeId.split('|');
+                let [q1, r1] = h1.split(',').map(Number);
+                let [q2, r2] = h2.split(',').map(Number);
+
+                let dq = q2 - q1;
+                let dr = r2 - r1;
+                let dirIndex = DIRS.findIndex(d => d[0] === dq && d[1] === dr);
+
+                if(dirIndex !== -1) {
+                    let center = hexToPixel(q1, r1);
+                    let v1 = dirIndex;
+                    let v2 = (dirIndex + 1) % 6;
+
+                    let px1 = center.x + SIZE * Math.cos(v1 * 60 * Math.PI / 180);
+                    let py1 = center.y + SIZE * Math.sin(v1 * 60 * Math.PI / 180);
+                    let px2 = center.x + SIZE * Math.cos(v2 * 60 * Math.PI / 180);
+                    let py2 = center.y + SIZE * Math.sin(v2 * 60 * Math.PI / 180);
+
+                    ctx.beginPath();
+                    ctx.moveTo(px1, py1);
+                    ctx.lineTo(px2, py2);
+                    ctx.stroke();
+                }
+            }
+
+            for (let coord in entities) {
+                if (coord === draggingToken) continue;
+                drawEntity(coord, entities[coord], false);
+            }
+
+            if (draggingToken && entities[draggingToken]) {
+                drawEntity(draggingToken, entities[draggingToken], true);
+            }
+
+            ctx.restore();
+        }
+
+        function getHexFromEvent() {
+            return pixelToHex(mouseWorldPos.x, mouseWorldPos.y);
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'r' || e.key === 'R') {
+                if (draggingToken) {
+                    entities[draggingToken].facing = (entities[draggingToken].facing + 1) % 6;
+                    draw();
+                } else {
+                    let hex = getHexFromEvent();
+                    let targetKey = getTokenAtHex(hex.q, hex.r);
+                    if (targetKey) {
+                        entities[targetKey].facing = (entities[targetKey].facing + 1) % 6;
+                        draw();
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            mouseWorldPos.x = e.clientX - (width / 2 + camera.x);
+            mouseWorldPos.y = e.clientY - (height / 2 + camera.y);
+
+            if (draggingToken) {
+                hasMoved = true;
+                draw();
+                return;
+            }
+
+            if (isPaintingWalls) {
+                let hex = pixelToHex(mouseWorldPos.x, mouseWorldPos.y);
+                let edgeId = getClosestEdge(hex.q, hex.r, mouseWorldPos.x, mouseWorldPos.y);
+                
+                if (edgeId !== lastEdgeId) {
+                    if (wallPaintAction === 'add') walls.add(edgeId);
+                    else walls.delete(edgeId);
+                    
+                    lastEdgeId = edgeId;
+                    draw();
+                }
+                return;
+            }
+
+            if (!isDraggingCanvas) return;
+            hasMoved = true;
+            let dx = e.clientX - lastMouse.x;
+            let dy = e.clientY - lastMouse.y;
+            camera.x += dx;
+            camera.y += dy;
+            lastMouse = { x: e.clientX, y: e.clientY };
+            draw();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            let mode = getMode();
+            let hex = getHexFromEvent();
+
+            if (e.button === 0) {
+                if (mode === 'tokens') {
+                    let clickedToken = getTokenAtHex(hex.q, hex.r);
+                    if (clickedToken) {
+                        draggingToken = clickedToken;
+                    }
+                } 
+                else if (mode === 'walls') {
+                    isPaintingWalls = true;
+                    let edgeId = getClosestEdge(hex.q, hex.r, mouseWorldPos.x, mouseWorldPos.y);
+                    
+                    if (walls.has(edgeId)) {
+                        wallPaintAction = 'remove';
+                        walls.delete(edgeId);
+                    } else {
+                        wallPaintAction = 'add';
+                        walls.add(edgeId);
+                    }
+                    lastEdgeId = edgeId;
+                    draw();
+                } 
+                else if (mode === 'camera') {
+                    isDraggingCanvas = true;
+                    lastMouse = { x: e.clientX, y: e.clientY };
+                }
+                hasMoved = false;
+            }
+            else if (e.button === 1) {
+                isDraggingCanvas = true;
+                lastMouse = { x: e.clientX, y: e.clientY };
+                hasMoved = false;
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            // Fix: Ignora eventos originados no painel UI
+            if (e.target !== canvas) {
+                isDraggingCanvas = false;
+                isPaintingWalls = false;
+                draggingToken = null; 
+                draw();
+                return;
+            }
+
+            let hex = getHexFromEvent();
+
+            if (draggingToken) {
+                let targetKey = `${hex.q},${hex.r}`;
+
+                if (targetKey !== draggingToken) {
+                    if (!entities[targetKey]) {
+                        entities[targetKey] = entities[draggingToken];
+                        delete entities[draggingToken];
+                    } else {
+                        let temp = entities[targetKey];
+                        entities[targetKey] = entities[draggingToken];
+                        entities[draggingToken] = temp;
+                    }
+                }
+                draggingToken = null;
+                draw();
+                return;
+            }
+
+            if (isPaintingWalls) {
+                isPaintingWalls = false;
+                lastEdgeId = null;
+                return;
+            }
+
+            isDraggingCanvas = false;
+            
+            if (e.button === 0 && !hasMoved) {
+                let mode = getMode();
+
+                if (mode === 'tokens') {
+                    let clickedToken = getTokenAtHex(hex.q, hex.r);
+                    
+                    if (!clickedToken) {
+                        let coordKey = `${hex.q},${hex.r}`;
+                        let tName = document.getElementById('tokenName').value || "Desconhecido";
+                        let tColor = document.getElementById('tokenColor').value;
+                        let tShapeKey = document.getElementById('tokenShape').value;
+                        
+                        entities[coordKey] = { 
+                            name: tName, 
+                            color: tColor, 
+                            shape: SHAPES[tShapeKey],
+                            facing: 0 
+                        };
+                        draw();
+                    }
+                }
+            }
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            let mode = getMode();
+            if (mode === 'tokens') {
+                let hex = getHexFromEvent();
+                let clickedToken = getTokenAtHex(hex.q, hex.r);
+                if (clickedToken) {
+                    delete entities[clickedToken];
+                    draw();
+                }
+            }
+        });
+
+        draw();
+    </script>
+</body>
+</html>
