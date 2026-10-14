@@ -1,0 +1,22 @@
+{
+    "name": "gurps-grid-generator",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Offline hex-grid tactical map editor for GURPS and other tabletop RPGs.",
+    "license": "MIT",
+    "scripts": {
+        "test": "vitest run",
+        "lint": "eslint .",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "check": "npm run lint && npm run format:check && npm test"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "eslint": "^10.12.0",
+        "globals": "^17.13.0",
+        "jsdom": "^30.1.2",
+        "prettier": "^3.9.10",
+        "vitest": "^5.0.4"
+    }
+}
